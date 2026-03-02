@@ -1,22 +1,118 @@
-name: CD deploy main
-
-permissions:
-  contents: read
+name: CI/CD — Deploy to GCP Cloud Run
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
+
+env:
+  GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  GCP_REGION: us-east1
+  ARTIFACT_REGISTRY: us-east1-docker.pkg.dev
+  SERVER_IMAGE: us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/lgp-crm/server
+  FRONT_IMAGE: us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/lgp-crm/front
+  SERVER_SERVICE: lgp-crm-server
+  FRONT_SERVICE: lgp-crm-front
+
+permissions:
+  contents: read
+  id-token: write  # Required for Workload Identity Federation
 
 jobs:
-  deploy-main:
-    timeout-minutes: 3
-    runs-on: depot-ubuntu-24.04
+  build-and-deploy:
+    name: Build, Push & Deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
     steps:
-      - name: Repository Dispatch
-        uses: peter-evans/repository-dispatch@v2
+      # ── 1. Checkout ─────────────────────────────────────────────────────
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── 2. Authenticate to GCP via Workload Identity Federation ─────────
+      - name: Authenticate to GCP
+        id: auth
+        uses: google-github-actions/auth@v2
         with:
-          token: ${{ secrets.TWENTY_INFRA_TOKEN }}
-          repository: twentyhq/twenty-infra
-          event-type: auto-deploy-main
-          client-payload: '{"github": ${{ toJson(github) }}}' # Passes the entire github context to the downstream workflow
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      # ── 3. Configure Docker to push to Artifact Registry ────────────────
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.ARTIFACT_REGISTRY }} --quiet
+
+      # ── 4. Set up Docker Buildx for multi-platform caching ──────────────
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # ── 5. Build & Push Server Image ────────────────────────────────────
+      - name: Build & Push Server Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: packages/twenty-server/Dockerfile
+          push: true
+          tags: |
+            ${{ env.SERVER_IMAGE }}:latest
+            ${{ env.SERVER_IMAGE }}:${{ github.sha }}
+          cache-from: type=registry,ref=${{ env.SERVER_IMAGE }}:cache
+          cache-to: type=registry,ref=${{ env.SERVER_IMAGE }}:cache,mode=max
+
+      # ── 6. Build & Push Front Image ─────────────────────────────────────
+      - name: Build & Push Front Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: packages/twenty-front/Dockerfile
+          push: true
+          tags: |
+            ${{ env.FRONT_IMAGE }}:latest
+            ${{ env.FRONT_IMAGE }}:${{ github.sha }}
+          build-args: |
+            VITE_SERVER_BASE_URL=${{ secrets.SERVER_BASE_URL }}
+          cache-from: type=registry,ref=${{ env.FRONT_IMAGE }}:cache
+          cache-to: type=registry,ref=${{ env.FRONT_IMAGE }}:cache,mode=max
+
+      # ── 7. Deploy Server to Cloud Run ────────────────────────────────────
+      - name: Deploy Server to Cloud Run
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: ${{ env.SERVER_SERVICE }}
+          region: ${{ env.GCP_REGION }}
+          image: ${{ env.SERVER_IMAGE }}:${{ github.sha }}
+          flags: |
+            --allow-unauthenticated
+            --port=3000
+            --memory=1Gi
+            --cpu=1
+            --min-instances=0
+            --max-instances=5
+            --add-cloudsql-instances=${{ secrets.CLOUD_SQL_INSTANCE }}
+            --service-account=${{ secrets.GCP_SERVICE_ACCOUNT }}
+          env_vars: |
+            NODE_ENV=production
+          secrets: |
+            PG_DATABASE_URL=PG_DATABASE_URL:latest
+            APP_SECRET=APP_SECRET:latest
+            FRONTEND_URL=FRONTEND_URL:latest
+
+      # ── 8. Deploy Front to Cloud Run ─────────────────────────────────────
+      - name: Deploy Front to Cloud Run
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: ${{ env.FRONT_SERVICE }}
+          region: ${{ env.GCP_REGION }}
+          image: ${{ env.FRONT_IMAGE }}:${{ github.sha }}
+          flags: |
+            --allow-unauthenticated
+            --port=80
+            --memory=256Mi
+            --cpu=1
+            --min-instances=0
+            --max-instances=3
+            --service-account=${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      # ── 9. Print deployed URLs ───────────────────────────────────────────
+      - name: Print Service URLs
+        run: |
+          echo "✅ Server: $(gcloud run services describe ${{ env.SERVER_SERVICE }} --region=${{ env.GCP_REGION }} --format='value(status.url)')"
+          echo "✅ Front:  $(gcloud run services describe ${{ env.FRONT_SERVICE }} --region=${{ env.GCP_REGION }} --format='value(status.url)')"
