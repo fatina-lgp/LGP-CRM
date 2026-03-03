@@ -24,18 +24,21 @@ RUN yarn config set enableConstraintsChecks false && \
 # Install all dependencies
 RUN yarn install
 
+# Disable NX Cloud via env var (don't use --no-nx-cloud flag — it gets forwarded to vite and fails)
+ENV NX_CLOUD_ACCESS_TOKEN=""
+ENV NX_NO_CLOUD=true
+
 # Build workspace dependencies in their nx project graph order
-# twenty-shared and twenty-utils are leaf deps, then twenty-ui, then twenty-sdk, then twenty-front
-RUN yarn nx run-many --target=build --projects=twenty-shared,twenty-utils --skip-nx-cache --no-nx-cloud
-RUN yarn nx run-many --target=build --projects=twenty-ui --skip-nx-cache --no-nx-cloud
-RUN yarn nx run-many --target=build --projects=twenty-sdk --skip-nx-cache --no-nx-cloud
+RUN yarn nx run-many --target=build --projects=twenty-shared --skip-nx-cache
+RUN yarn nx run-many --target=build --projects=twenty-ui --skip-nx-cache
+RUN yarn nx run-many --target=build --projects=twenty-sdk --skip-nx-cache
 
 # VITE_SERVER_BASE_URL injected at build time via CI
 ARG VITE_SERVER_BASE_URL=http://localhost:3000
 ENV VITE_SERVER_BASE_URL=$VITE_SERVER_BASE_URL
 
 # Build the frontend
-RUN yarn nx build twenty-front --skip-nx-cache --no-nx-cloud
+RUN yarn nx build twenty-front --skip-nx-cache
 
 # ─── Stage 2: nginx static server ────────────────────────────────────────────
 FROM nginx:1.27-alpine AS runner
