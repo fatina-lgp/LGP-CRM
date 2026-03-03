@@ -86,7 +86,7 @@ jobs:
             --min-instances=0
             --max-instances=5
             --timeout=300
-            --startup-cpu-boost
+            --cpu-boost
             --add-cloudsql-instances=${{ secrets.CLOUD_SQL_INSTANCE }}
             --service-account=${{ secrets.GCP_SERVICE_ACCOUNT }}
           env_vars: |
