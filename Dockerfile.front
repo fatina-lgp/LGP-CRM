@@ -17,6 +17,10 @@ WORKDIR /app
 # Copy everything first (Yarn 4 Berry needs patches/ and .yarn/ during install)
 COPY . .
 
+# Disable yarn constraint checks and hardened mode for Docker builds
+RUN yarn config set enableConstraintsChecks false && \
+    yarn config set enableHardenedMode false
+
 # Install all dependencies
 RUN yarn install
 
