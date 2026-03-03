@@ -1,5 +1,5 @@
 # LGP CRM — API Server (Production)
-# Multi-stage build: build on Node 20, run in a lean Alpine image
+# Yarn 4 (Berry) compatible build
 
 # ─── Stage 1: Build ──────────────────────────────────────────────────────────
 FROM node:20-alpine AS builder
@@ -8,24 +8,14 @@ RUN apk add --no-cache python3 make g++ git
 
 WORKDIR /app
 
-# Copy entire workspace for Yarn 4 (Berry) — workspaces focus not available
-COPY package.json yarn.lock .yarnrc.yml ./
-COPY .yarn ./.yarn
-
-# Copy all package.json files so Yarn can resolve the workspace graph
-COPY packages/twenty-server/package.json ./packages/twenty-server/
-COPY packages/twenty-ui/package.json ./packages/twenty-ui/
-COPY packages/twenty-shared/package.json ./packages/twenty-shared/
-COPY packages/twenty-utils/package.json ./packages/twenty-utils/
-COPY packages/twenty-emails/package.json ./packages/twenty-emails/
-COPY packages/twenty-sdk/package.json ./packages/twenty-sdk/
-
-# Yarn 4 install (all workspaces — no workspaces focus in Berry)
-RUN yarn install --immutable
-
-# Copy source and build server
+# Copy EVERYTHING first (Yarn 4 needs patches/, .yarn/plugins, etc. during install)
+# .dockerignore excludes node_modules, dist, and env files
 COPY . .
 
+# Install all workspace dependencies
+RUN yarn install --immutable
+
+# Build the server package
 RUN yarn nx build twenty-server --skip-nx-cache
 
 # ─── Stage 2: Production runtime ─────────────────────────────────────────────
@@ -35,6 +25,7 @@ RUN apk add --no-cache curl
 
 WORKDIR /app
 
+# Copy just what's needed to run
 COPY --from=builder /app/packages/twenty-server/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./
