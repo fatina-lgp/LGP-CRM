@@ -30,14 +30,18 @@ ENV NX_NO_CLOUD=true
 
 # Build workspace dependencies in their nx project graph order
 RUN yarn nx run-many --target=build --projects=twenty-shared --skip-nx-cache
-RUN yarn nx run-many --target=build --projects=twenty-ui --skip-nx-cache
+RUN yarn nx run-many --target=buildIndividual --projects=twenty-ui --skip-nx-cache || \
+    yarn nx run twenty-ui:build:individual --skip-nx-cache || true
+
+# Generate the remote DOM host-component-registry (required by front-component-renderer)
+RUN yarn nx run twenty-sdk:generate-remote-dom-elements --skip-nx-cache
 
 # Patch twenty-sdk's vite.config.node.ts to exclude the CLI entry point
 # (CLI source references missing files; twenty-front only needs the SDK browser part)
 RUN sed -i "s|entry: \['src/sdk/index.ts', 'src/cli/cli.ts'\]|entry: ['src/sdk/index.ts']|" \
     packages/twenty-sdk/vite.config.node.ts
 
-# Build only the browser SDK target (not the full twenty-sdk CLI build)
+# Build the SDK browser target now that generated files are available
 RUN yarn nx run twenty-sdk:build:sdk --skip-nx-cache
 
 # VITE_SERVER_BASE_URL injected at build time via CI
