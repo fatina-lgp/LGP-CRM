@@ -6,9 +6,12 @@ FROM node:20-alpine AS builder
 
 RUN apk add --no-cache python3 make g++ git
 
-# Yarn 4 Berry: disable strict immutable to allow resolution inside Docker
+# Enable Corepack so Node uses Yarn 4.9.2 (as declared in package.json packageManager field)
+# Docker's node:20-alpine ships with Yarn 1.x and Corepack disabled
+RUN corepack enable && corepack prepare yarn@4.9.2 --activate
+
+# Disable strict immutable to avoid peer-dep warning failures in Docker
 ENV YARN_ENABLE_IMMUTABLE_INSTALLS=false
-ENV YARN_IGNORE_PATH=true
 
 WORKDIR /app
 
