@@ -15,7 +15,8 @@ COPY packages/twenty-ui/package.json ./packages/twenty-ui/
 COPY packages/twenty-shared/package.json ./packages/twenty-shared/
 COPY packages/twenty-utils/package.json ./packages/twenty-utils/
 
-RUN yarn workspaces focus twenty-front --production=false
+# Yarn 4 (Berry) — use yarn install, not workspaces focus
+RUN yarn install --immutable
 
 COPY . .
 
