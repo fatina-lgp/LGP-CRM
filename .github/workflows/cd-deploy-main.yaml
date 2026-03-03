@@ -21,7 +21,7 @@ jobs:
   deploy:
     name: Build & Deploy LGP CRM
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 90
 
     steps:
       # ── 1. Checkout ──────────────────────────────────────────────────────
