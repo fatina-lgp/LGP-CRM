@@ -6,9 +6,8 @@ on:
 
 env:
   GCP_REGION: us-east1
-  GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-  API_IMAGE: us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/lgp-crm/lgp-crm-api
-  WEB_IMAGE: us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/lgp-crm/lgp-crm-web
+  GCP_PROJECT_ID: lgp-crm-prod
+  AR_REPO: us-east1-docker.pkg.dev/lgp-crm-prod/lgp-crm
   API_SERVICE: lgp-crm-api
   WEB_SERVICE: lgp-crm-web
 
@@ -23,22 +22,26 @@ jobs:
     timeout-minutes: 30
 
     steps:
+      # ── 1. Checkout ──────────────────────────────────────────────────────────
       - name: Checkout
         uses: actions/checkout@v4
 
+      # ── 2. Authenticate to GCP ───────────────────────────────────────────────
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
+      # ── 3. Configure Docker for Artifact Registry ────────────────────────────
       - name: Configure Docker
         run: gcloud auth configure-docker us-east1-docker.pkg.dev --quiet
 
+      # ── 4. Docker Buildx ─────────────────────────────────────────────────────
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # ── Build & Push API ─────────────────────────────────────────────────
+      # ── 5. Build & Push API ──────────────────────────────────────────────────
       - name: Build & Push lgp-crm-api
         uses: docker/build-push-action@v5
         with:
@@ -46,12 +49,12 @@ jobs:
           file: Dockerfile.api
           push: true
           tags: |
-            ${{ env.API_IMAGE }}:latest
-            ${{ env.API_IMAGE }}:${{ github.sha }}
-          cache-from: type=registry,ref=${{ env.API_IMAGE }}:cache
-          cache-to: type=registry,ref=${{ env.API_IMAGE }}:cache,mode=max
+            ${{ env.AR_REPO }}/lgp-crm-api:latest
+            ${{ env.AR_REPO }}/lgp-crm-api:${{ github.sha }}
+          cache-from: type=registry,ref=${{ env.AR_REPO }}/lgp-crm-api:cache
+          cache-to: type=registry,ref=${{ env.AR_REPO }}/lgp-crm-api:cache,mode=max
 
-      # ── Build & Push Web ─────────────────────────────────────────────────
+      # ── 6. Build & Push Web ──────────────────────────────────────────────────
       - name: Build & Push lgp-crm-web
         uses: docker/build-push-action@v5
         with:
@@ -59,56 +62,55 @@ jobs:
           file: Dockerfile.web
           push: true
           tags: |
-            ${{ env.WEB_IMAGE }}:latest
-            ${{ env.WEB_IMAGE }}:${{ github.sha }}
-          build-args: |
-            VITE_API_URL=${{ secrets.SERVER_BASE_URL }}
-          cache-from: type=registry,ref=${{ env.WEB_IMAGE }}:cache
-          cache-to: type=registry,ref=${{ env.WEB_IMAGE }}:cache,mode=max
+            ${{ env.AR_REPO }}/lgp-crm-web:latest
+            ${{ env.AR_REPO }}/lgp-crm-web:${{ github.sha }}
+          cache-from: type=registry,ref=${{ env.AR_REPO }}/lgp-crm-web:cache
+          cache-to: type=registry,ref=${{ env.AR_REPO }}/lgp-crm-web:cache,mode=max
 
-      # ── Deploy API to Cloud Run ──────────────────────────────────────────
+      # ── 7. Deploy API ────────────────────────────────────────────────────────
+      # Uses gcloud directly with --set-env-vars (replaces ALL env vars atomically)
+      # and --set-secrets (replaces ALL secret refs atomically).
+      # This avoids the "cannot change type" error from --update-env-vars.
       - name: Deploy lgp-crm-api
-        uses: google-github-actions/deploy-cloudrun@v2
-        with:
-          service: ${{ env.API_SERVICE }}
-          region: ${{ env.GCP_REGION }}
-          image: ${{ env.API_IMAGE }}:${{ github.sha }}
-          flags: |
-            --allow-unauthenticated
-            --port=3000
-            --memory=512Mi
-            --cpu=1
-            --min-instances=0
-            --max-instances=5
-            --add-cloudsql-instances=${{ secrets.CLOUD_SQL_INSTANCE }}
-            --service-account=${{ secrets.GCP_SERVICE_ACCOUNT }}
-          env_vars: |
-            NODE_ENV=production
-            FRONTEND_URL=*
-          secrets: |
-            DATABASE_URL=PG_DATABASE_URL:latest
-            JWT_SECRET=APP_SECRET:latest
+        run: |
+          gcloud run deploy ${{ env.API_SERVICE }} \
+            --image=${{ env.AR_REPO }}/lgp-crm-api:${{ github.sha }} \
+            --region=${{ env.GCP_REGION }} \
+            --platform=managed \
+            --allow-unauthenticated \
+            --port=3000 \
+            --memory=512Mi \
+            --cpu=1 \
+            --min-instances=0 \
+            --max-instances=5 \
+            --service-account=${{ secrets.GCP_SERVICE_ACCOUNT }} \
+            --add-cloudsql-instances=${{ secrets.CLOUD_SQL_INSTANCE }} \
+            --set-env-vars="NODE_ENV=production,FRONTEND_URL=*" \
+            --set-secrets="DATABASE_URL=PG_DATABASE_URL:latest,JWT_SECRET=APP_SECRET:latest"
 
-      # ── Deploy Web to Cloud Run ──────────────────────────────────────────
+      # ── 8. Deploy Web ────────────────────────────────────────────────────────
       - name: Deploy lgp-crm-web
-        uses: google-github-actions/deploy-cloudrun@v2
-        with:
-          service: ${{ env.WEB_SERVICE }}
-          region: ${{ env.GCP_REGION }}
-          image: ${{ env.WEB_IMAGE }}:${{ github.sha }}
-          flags: |
-            --allow-unauthenticated
-            --port=80
-            --memory=128Mi
-            --cpu=1
-            --min-instances=0
-            --max-instances=3
+        run: |
+          gcloud run deploy ${{ env.WEB_SERVICE }} \
+            --image=${{ env.AR_REPO }}/lgp-crm-web:${{ github.sha }} \
+            --region=${{ env.GCP_REGION }} \
+            --platform=managed \
+            --allow-unauthenticated \
+            --port=80 \
+            --memory=128Mi \
+            --cpu=1 \
+            --min-instances=0 \
+            --max-instances=3 \
             --service-account=${{ secrets.GCP_SERVICE_ACCOUNT }}
 
-      # ── Report URLs ──────────────────────────────────────────────────────
+      # ── 9. Report URLs ───────────────────────────────────────────────────────
       - name: Report deployed URLs
         run: |
-          API_URL=$(gcloud run services describe ${{ env.API_SERVICE }} --region=${{ env.GCP_REGION }} --format='value(status.url)')
-          WEB_URL=$(gcloud run services describe ${{ env.WEB_SERVICE }} --region=${{ env.GCP_REGION }} --format='value(status.url)')
-          echo "✅ LGP CRM API: $API_URL"
-          echo "✅ LGP CRM Web: $WEB_URL"
+          API_URL=$(gcloud run services describe ${{ env.API_SERVICE }} \
+            --region=${{ env.GCP_REGION }} --format='value(status.url)')
+          WEB_URL=$(gcloud run services describe ${{ env.WEB_SERVICE }} \
+            --region=${{ env.GCP_REGION }} --format='value(status.url)')
+          echo "✅ LGP CRM API : $API_URL"
+          echo "✅ LGP CRM Web : $WEB_URL"
+          echo "API_URL=$API_URL" >> $GITHUB_STEP_SUMMARY
+          echo "WEB_URL=$WEB_URL" >> $GITHUB_STEP_SUMMARY
