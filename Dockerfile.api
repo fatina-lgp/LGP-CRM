@@ -15,11 +15,9 @@ RUN apk add --no-cache curl
 
 WORKDIR /app
 
-# Only copy production deps
-COPY package*.json ./
-RUN npm ci --only=production
+# Copy full node_modules from builder (includes Prisma migration engine)
+COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY prisma ./prisma
 COPY start.sh ./start.sh
 RUN chmod +x start.sh
