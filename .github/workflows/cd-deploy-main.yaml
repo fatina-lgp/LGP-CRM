@@ -51,8 +51,7 @@ jobs:
           tags: |
             ${{ env.AR_REPO }}/lgp-crm-api:latest
             ${{ env.AR_REPO }}/lgp-crm-api:${{ github.sha }}
-          cache-from: type=registry,ref=${{ env.AR_REPO }}/lgp-crm-api:cache
-          cache-to: type=registry,ref=${{ env.AR_REPO }}/lgp-crm-api:cache,mode=max
+          no-cache: true
 
       # ── 6. Build & Push Web ──────────────────────────────────────────────────
       - name: Build & Push lgp-crm-web
