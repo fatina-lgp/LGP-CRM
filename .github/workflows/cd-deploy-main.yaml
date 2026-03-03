@@ -84,8 +84,7 @@ jobs:
             --service-account=${{ secrets.GCP_SERVICE_ACCOUNT }}
           env_vars: |
             NODE_ENV=production
-            REDIS_URL=${{ secrets.REDIS_URL }}
-            FRONTEND_URL=${{ secrets.FRONTEND_URL }}
+            FRONTEND_URL=*
           secrets: |
             DATABASE_URL=PG_DATABASE_URL:latest
             JWT_SECRET=APP_SECRET:latest
