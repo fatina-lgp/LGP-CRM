@@ -67,7 +67,17 @@ jobs:
           cache-from: type=registry,ref=${{ env.AR_REPO }}/lgp-crm-web:cache
           cache-to: type=registry,ref=${{ env.AR_REPO }}/lgp-crm-web:cache,mode=max
 
-      # ── 7. Deploy API ────────────────────────────────────────────────────────
+      # ── 7. Clear old env vars (previous Twenty deploy had FRONTEND_URL as Secret-type) ──
+      - name: Clear old Cloud Run config
+        run: |
+          # Remove all old env vars and secret refs so we can set them fresh
+          gcloud run services update ${{ env.API_SERVICE }} \
+            --region=${{ env.GCP_REGION }} \
+            --clear-env-vars \
+            --clear-secrets \
+            --quiet || true   # ignore if service doesn't exist yet
+
+      # ── 8. Deploy API ────────────────────────────────────────────────────────
       # Uses gcloud directly with --set-env-vars (replaces ALL env vars atomically)
       # and --set-secrets (replaces ALL secret refs atomically).
       # This avoids the "cannot change type" error from --update-env-vars.
