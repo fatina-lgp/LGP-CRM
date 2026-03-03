@@ -4,51 +4,56 @@
 # ─── Stage 1: Build ──────────────────────────────────────────────────────────
 FROM node:20-alpine AS builder
 
-RUN apk add --no-cache python3 make g++ git
+RUN apk add --no-cache python3 make g++ git curl
 
 # Enable Corepack so Node uses Yarn 4.9.2 (packageManager field in package.json)
 RUN corepack enable && corepack prepare yarn@4.9.2 --activate
 
-# Disable strict immutable to avoid peer-dep warning failures in Docker
+# Disable strict immutable installs in Docker (peer dep warnings become warnings not errors)
 ENV YARN_ENABLE_IMMUTABLE_INSTALLS=false
+# Disable NX Cloud via env (using --no-nx-cloud flag passes it to vite and breaks builds)
+ENV NX_CLOUD_ACCESS_TOKEN=""
+ENV NX_NO_CLOUD=true
 
 WORKDIR /app
 
-# Copy everything first (Yarn 4 Berry needs patches/ and .yarn/ during install)
+# Copy full workspace (Yarn 4 Berry needs .yarn/, patches/, .yarnrc.yml during install)
 COPY . .
 
-# Disable yarn constraint checks and hardened mode for Docker builds
+# Disable yarn constraint checks and hardened mode (upstream codebase has peer dep conflicts)
 RUN yarn config set enableConstraintsChecks false && \
     yarn config set enableHardenedMode false
 
 # Install all dependencies
 RUN yarn install
 
-# Disable NX Cloud via env var (don't use --no-nx-cloud flag — it gets forwarded to vite and fails)
-ENV NX_CLOUD_ACCESS_TOKEN=""
-ENV NX_NO_CLOUD=true
+# ─── Patch twenty-sdk to remove broken CLI source ────────────────────────────
+# The CLI source files (src/cli/) import modules that don't exist in this repo:
+#   manifest-reader, manifest-build, esbuild-watcher, tsc-watcher, etc.
+# NX's tsgo type-check step runs on the entire src/ directory and fails.
+# Since twenty-front only imports from twenty-sdk/front-component-renderer (not CLI),
+# we can safely remove the CLI directory before building.
+RUN rm -rf packages/twenty-sdk/src/cli
 
-# Build workspace dependencies in their nx project graph order
+# Also remove the CLI from the vite.config.node.ts entry array
+RUN sed -i "s|entry: \['src/sdk/index.ts', 'src/cli/cli.ts'\]|entry: ['src/sdk/index.ts']|" \
+    packages/twenty-sdk/vite.config.node.ts 2>/dev/null || true
+
+# Build workspace dependencies in correct NX project graph order
 RUN yarn nx run-many --target=build --projects=twenty-shared --skip-nx-cache
-RUN yarn nx run-many --target=buildIndividual --projects=twenty-ui --skip-nx-cache || \
-    yarn nx run twenty-ui:build:individual --skip-nx-cache || true
+RUN yarn nx run-many --target=build --projects=twenty-ui --skip-nx-cache
 
-# Generate the remote DOM host-component-registry (required by front-component-renderer)
+# Generate the SDK's remote DOM registry (creates host/generated/ files needed by front-component-renderer)
 RUN yarn nx run twenty-sdk:generate-remote-dom-elements --skip-nx-cache
 
-# Patch twenty-sdk's vite.config.node.ts to exclude the CLI entry point
-# (CLI source references missing files; twenty-front only needs the SDK browser part)
-RUN sed -i "s|entry: \['src/sdk/index.ts', 'src/cli/cli.ts'\]|entry: ['src/sdk/index.ts']|" \
-    packages/twenty-sdk/vite.config.node.ts
-
-# Build the SDK browser target now that generated files are available
-RUN yarn nx run twenty-sdk:build:sdk --skip-nx-cache
+# Build the full twenty-sdk (now CLI is gone, tsgo won't fail on broken CLI source)
+RUN yarn nx run twenty-sdk:build --skip-nx-cache
 
 # VITE_SERVER_BASE_URL injected at build time via CI
 ARG VITE_SERVER_BASE_URL=http://localhost:3000
 ENV VITE_SERVER_BASE_URL=$VITE_SERVER_BASE_URL
 
-# Build the frontend
+# Build the frontend (NX will use the already-built twenty-sdk from cache)
 RUN yarn nx build twenty-front --skip-nx-cache
 
 # ─── Stage 2: nginx static server ────────────────────────────────────────────
