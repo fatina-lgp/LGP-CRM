@@ -68,33 +68,8 @@ jobs:
           cache-to: type=registry,ref=${{ env.AR_REPO }}/lgp-crm-web:cache,mode=max
 
       # ── 7. Deploy API ──────────────────────────────────────────────────────────
-      # Single atomic deploy: --remove-env-vars+--remove-secrets clears old
-      # Twenty-set FRONTEND_URL/REDIS_URL secret-type refs, then --set-* applies
-      # the new values — all in one revision, no intermediate broken state.
       - name: Deploy lgp-crm-api
         run: |
-          gcloud run deploy ${{ env.API_SERVICE }} \
-            --image=${{ env.AR_REPO }}/lgp-crm-api:${{ github.sha }} \
-            --region=${{ env.GCP_REGION }} \
-            --platform=managed \
-            --allow-unauthenticated \
-            --port=3000 \
-            --memory=1Gi \
-            --cpu=2 \
-            --min-instances=0 \
-            --max-instances=5 \
-            --timeout=300 \
-            --service-account=${{ secrets.GCP_SERVICE_ACCOUNT }} \
-            --add-cloudsql-instances=${{ secrets.CLOUD_SQL_INSTANCE }} \
-            --remove-env-vars="FRONTEND_URL,REDIS_URL,SERVER_URL,STORAGE_TYPE,LOG_LEVELS" \
-            --remove-secrets="FRONTEND_URL,REDIS_URL,SERVER_URL" \
-            --set-env-vars="NODE_ENV=production,FRONTEND_URL=*" \
-            --set-secrets="DATABASE_URL=PG_DATABASE_URL:latest,JWT_SECRET=APP_SECRET:latest" \
-            2>&1 || true
-          # If the above fails due to type conflict on first run, force-clear then redeploy
-          gcloud run services update ${{ env.API_SERVICE }} \
-            --region=${{ env.GCP_REGION }} \
-            --clear-env-vars --clear-secrets --no-traffic --quiet 2>/dev/null || true
           gcloud run deploy ${{ env.API_SERVICE }} \
             --image=${{ env.AR_REPO }}/lgp-crm-api:${{ github.sha }} \
             --region=${{ env.GCP_REGION }} \

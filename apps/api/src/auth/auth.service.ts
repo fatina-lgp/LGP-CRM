@@ -13,18 +13,23 @@ export class AuthService {
   ) {}
 
   async register(dto: RegisterDto) {
-    const existing = await this.prisma.user.findUnique({
-      where: { email: dto.email },
-    });
-    if (existing) throw new ConflictException('Email already in use');
+    try {
+      const existing = await this.prisma.user.findUnique({
+        where: { email: dto.email },
+      });
+      if (existing) throw new ConflictException('Email already in use');
 
-    const passwordHash = await bcrypt.hash(dto.password, 12);
-    const user = await this.prisma.user.create({
-      data: { email: dto.email, name: dto.name, passwordHash },
-      select: { id: true, email: true, name: true, role: true },
-    });
-    const token = this.jwt.sign({ sub: user.id, email: user.email });
-    return { user, accessToken: token };
+      const passwordHash = await bcrypt.hash(dto.password, 12);
+      const user = await this.prisma.user.create({
+        data: { email: dto.email, name: dto.name, passwordHash },
+        select: { id: true, email: true, name: true, role: true },
+      });
+      const token = this.jwt.sign({ sub: user.id, email: user.email });
+      return { user, accessToken: token };
+    } catch (err) {
+      if (err instanceof ConflictException) throw err;
+      throw new Error(`Registration failed: ${err?.message || err}`);
+    }
   }
 
   async login(dto: LoginDto) {
