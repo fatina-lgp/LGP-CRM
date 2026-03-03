@@ -31,7 +31,11 @@ ENV NX_NO_CLOUD=true
 # Build workspace dependencies in their nx project graph order
 RUN yarn nx run-many --target=build --projects=twenty-shared --skip-nx-cache
 RUN yarn nx run-many --target=build --projects=twenty-ui --skip-nx-cache
-RUN yarn nx run-many --target=build --projects=twenty-sdk --skip-nx-cache
+
+# Build only the browser SDK target (not the full twenty-sdk CLI build)
+# twenty-front only imports from twenty-sdk/front-component-renderer (SDK browser target)
+# The full build also runs vite.config.node.ts CLI build which has broken source dependencies
+RUN yarn nx run twenty-sdk:build:sdk --skip-nx-cache
 
 # VITE_SERVER_BASE_URL injected at build time via CI
 ARG VITE_SERVER_BASE_URL=http://localhost:3000
