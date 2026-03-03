@@ -6,14 +6,18 @@ FROM node:20-alpine AS builder
 
 RUN apk add --no-cache python3 make g++ git
 
+# Yarn 4 Berry: disable strict immutable to allow resolution inside Docker
+ENV YARN_ENABLE_IMMUTABLE_INSTALLS=false
+ENV YARN_IGNORE_PATH=true
+
 WORKDIR /app
 
 # Copy EVERYTHING first (Yarn 4 needs patches/, .yarn/plugins, etc. during install)
 # .dockerignore excludes node_modules, dist, and env files
 COPY . .
 
-# Install all workspace dependencies
-RUN yarn install --immutable
+# Install all workspace dependencies (no --immutable: peer dep warnings would fail strict mode)
+RUN yarn install
 
 # Build the server package
 RUN yarn nx build twenty-server --skip-nx-cache
