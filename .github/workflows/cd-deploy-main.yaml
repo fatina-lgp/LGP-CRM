@@ -126,6 +126,18 @@ jobs:
             --max-instances=3 \
             --service-account=${{ secrets.GCP_SERVICE_ACCOUNT }}
 
+      # ── 9. Grant public access ───────────────────────────────────────────────
+      - name: Grant public access to both services
+        run: |
+          gcloud run services add-iam-policy-binding ${{ env.API_SERVICE }} \
+            --region=${{ env.GCP_REGION }} \
+            --member="allUsers" \
+            --role="roles/run.invoker" || true
+          gcloud run services add-iam-policy-binding ${{ env.WEB_SERVICE }} \
+            --region=${{ env.GCP_REGION }} \
+            --member="allUsers" \
+            --role="roles/run.invoker" || true
+
       # ── 9. Report URLs ───────────────────────────────────────────────────────
       - name: Report deployed URLs
         run: |
