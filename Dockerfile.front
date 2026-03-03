@@ -24,15 +24,18 @@ RUN yarn config set enableConstraintsChecks false && \
 # Install all dependencies
 RUN yarn install
 
-# Build twenty-sdk first — twenty-front imports from it and it must be compiled
-RUN yarn nx build twenty-sdk --skip-nx-cache
+# Build workspace dependencies in their nx project graph order
+# twenty-shared and twenty-utils are leaf deps, then twenty-ui, then twenty-sdk, then twenty-front
+RUN yarn nx run-many --target=build --projects=twenty-shared,twenty-utils --skip-nx-cache --no-nx-cloud
+RUN yarn nx run-many --target=build --projects=twenty-ui --skip-nx-cache --no-nx-cloud
+RUN yarn nx run-many --target=build --projects=twenty-sdk --skip-nx-cache --no-nx-cloud
 
 # VITE_SERVER_BASE_URL injected at build time via CI
 ARG VITE_SERVER_BASE_URL=http://localhost:3000
 ENV VITE_SERVER_BASE_URL=$VITE_SERVER_BASE_URL
 
 # Build the frontend
-RUN yarn nx build twenty-front --skip-nx-cache
+RUN yarn nx build twenty-front --skip-nx-cache --no-nx-cloud
 
 # ─── Stage 2: nginx static server ────────────────────────────────────────────
 FROM nginx:1.27-alpine AS runner
