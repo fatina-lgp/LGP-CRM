@@ -24,6 +24,9 @@ RUN yarn config set enableConstraintsChecks false && \
 # Install all dependencies
 RUN yarn install
 
+# Build twenty-sdk first — twenty-front imports from it and it must be compiled
+RUN yarn nx build twenty-sdk --skip-nx-cache
+
 # VITE_SERVER_BASE_URL injected at build time via CI
 ARG VITE_SERVER_BASE_URL=http://localhost:3000
 ENV VITE_SERVER_BASE_URL=$VITE_SERVER_BASE_URL
