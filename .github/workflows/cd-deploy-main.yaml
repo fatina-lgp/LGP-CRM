@@ -81,10 +81,12 @@ jobs:
           flags: |
             --allow-unauthenticated
             --port=3000
-            --memory=1Gi
-            --cpu=1
+            --memory=2Gi
+            --cpu=2
             --min-instances=0
             --max-instances=5
+            --timeout=300
+            --startup-cpu-boost
             --add-cloudsql-instances=${{ secrets.CLOUD_SQL_INSTANCE }}
             --service-account=${{ secrets.GCP_SERVICE_ACCOUNT }}
           env_vars: |
@@ -93,6 +95,8 @@ jobs:
             PG_DATABASE_URL=PG_DATABASE_URL:latest
             APP_SECRET=APP_SECRET:latest
             FRONTEND_URL=FRONTEND_URL:latest
+            REDIS_URL=REDIS_URL:latest
+            SERVER_URL=SERVER_URL:latest
 
       # ── 8. Deploy lgp-crm-web to Cloud Run ──────────────────────────────
       - name: Deploy lgp-crm-web
