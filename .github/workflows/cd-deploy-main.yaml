@@ -1,84 +1,83 @@
-name: CI/CD — Deploy to GCP Cloud Run
+name: LGP CRM — Deploy to GCP Cloud Run
 
 on:
   push:
     branches: [main]
 
 env:
-  GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
   GCP_REGION: us-east1
-  ARTIFACT_REGISTRY: us-east1-docker.pkg.dev
-  SERVER_IMAGE: us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/lgp-crm/server
-  FRONT_IMAGE: us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/lgp-crm/front
-  SERVER_SERVICE: lgp-crm-server
-  FRONT_SERVICE: lgp-crm-front
+  # Artifact Registry path — images are named lgp-crm-api and lgp-crm-web
+  API_IMAGE: us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/lgp-crm/lgp-crm-api
+  WEB_IMAGE: us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/lgp-crm/lgp-crm-web
+  # Cloud Run service names
+  API_SERVICE: lgp-crm-api
+  WEB_SERVICE: lgp-crm-web
 
 permissions:
   contents: read
-  id-token: write  # Required for Workload Identity Federation
+  id-token: write   # Required for Workload Identity Federation
 
 jobs:
-  build-and-deploy:
-    name: Build, Push & Deploy
+  deploy:
+    name: Build & Deploy LGP CRM
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
     steps:
-      # ── 1. Checkout ─────────────────────────────────────────────────────
-      - name: Checkout
+      # ── 1. Checkout ──────────────────────────────────────────────────────
+      - name: Checkout LGP CRM
         uses: actions/checkout@v4
 
-      # ── 2. Authenticate to GCP via Workload Identity Federation ─────────
+      # ── 2. Authenticate to GCP via Workload Identity (no static keys) ───
       - name: Authenticate to GCP
-        id: auth
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
-      # ── 3. Configure Docker to push to Artifact Registry ────────────────
-      - name: Configure Docker for Artifact Registry
-        run: gcloud auth configure-docker ${{ env.ARTIFACT_REGISTRY }} --quiet
+      # ── 3. Configure Docker for Artifact Registry ────────────────────────
+      - name: Configure Docker
+        run: gcloud auth configure-docker us-east1-docker.pkg.dev --quiet
 
-      # ── 4. Set up Docker Buildx for multi-platform caching ──────────────
+      # ── 4. Set up Docker Buildx ──────────────────────────────────────────
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # ── 5. Build & Push Server Image ────────────────────────────────────
-      - name: Build & Push Server Image
+      # ── 5. Build & Push — LGP CRM API (server) ──────────────────────────
+      - name: Build & Push lgp-crm-api
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: packages/twenty-server/Dockerfile
+          file: Dockerfile.server
           push: true
           tags: |
-            ${{ env.SERVER_IMAGE }}:latest
-            ${{ env.SERVER_IMAGE }}:${{ github.sha }}
-          cache-from: type=registry,ref=${{ env.SERVER_IMAGE }}:cache
-          cache-to: type=registry,ref=${{ env.SERVER_IMAGE }}:cache,mode=max
+            ${{ env.API_IMAGE }}:latest
+            ${{ env.API_IMAGE }}:${{ github.sha }}
+          cache-from: type=registry,ref=${{ env.API_IMAGE }}:cache
+          cache-to: type=registry,ref=${{ env.API_IMAGE }}:cache,mode=max
 
-      # ── 6. Build & Push Front Image ─────────────────────────────────────
-      - name: Build & Push Front Image
+      # ── 6. Build & Push — LGP CRM Web (frontend) ────────────────────────
+      - name: Build & Push lgp-crm-web
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: packages/twenty-front/Dockerfile
+          file: Dockerfile.front
           push: true
           tags: |
-            ${{ env.FRONT_IMAGE }}:latest
-            ${{ env.FRONT_IMAGE }}:${{ github.sha }}
+            ${{ env.WEB_IMAGE }}:latest
+            ${{ env.WEB_IMAGE }}:${{ github.sha }}
           build-args: |
             VITE_SERVER_BASE_URL=${{ secrets.SERVER_BASE_URL }}
-          cache-from: type=registry,ref=${{ env.FRONT_IMAGE }}:cache
-          cache-to: type=registry,ref=${{ env.FRONT_IMAGE }}:cache,mode=max
+          cache-from: type=registry,ref=${{ env.WEB_IMAGE }}:cache
+          cache-to: type=registry,ref=${{ env.WEB_IMAGE }}:cache,mode=max
 
-      # ── 7. Deploy Server to Cloud Run ────────────────────────────────────
-      - name: Deploy Server to Cloud Run
+      # ── 7. Deploy lgp-crm-api to Cloud Run ──────────────────────────────
+      - name: Deploy lgp-crm-api
         uses: google-github-actions/deploy-cloudrun@v2
         with:
-          service: ${{ env.SERVER_SERVICE }}
+          service: ${{ env.API_SERVICE }}
           region: ${{ env.GCP_REGION }}
-          image: ${{ env.SERVER_IMAGE }}:${{ github.sha }}
+          image: ${{ env.API_IMAGE }}:${{ github.sha }}
           flags: |
             --allow-unauthenticated
             --port=3000
@@ -95,13 +94,13 @@ jobs:
             APP_SECRET=APP_SECRET:latest
             FRONTEND_URL=FRONTEND_URL:latest
 
-      # ── 8. Deploy Front to Cloud Run ─────────────────────────────────────
-      - name: Deploy Front to Cloud Run
+      # ── 8. Deploy lgp-crm-web to Cloud Run ──────────────────────────────
+      - name: Deploy lgp-crm-web
         uses: google-github-actions/deploy-cloudrun@v2
         with:
-          service: ${{ env.FRONT_SERVICE }}
+          service: ${{ env.WEB_SERVICE }}
           region: ${{ env.GCP_REGION }}
-          image: ${{ env.FRONT_IMAGE }}:${{ github.sha }}
+          image: ${{ env.WEB_IMAGE }}:${{ github.sha }}
           flags: |
             --allow-unauthenticated
             --port=80
@@ -111,8 +110,12 @@ jobs:
             --max-instances=3
             --service-account=${{ secrets.GCP_SERVICE_ACCOUNT }}
 
-      # ── 9. Print deployed URLs ───────────────────────────────────────────
-      - name: Print Service URLs
+      # ── 9. Report deployed URLs ──────────────────────────────────────────
+      - name: Report deployment URLs
         run: |
-          echo "✅ Server: $(gcloud run services describe ${{ env.SERVER_SERVICE }} --region=${{ env.GCP_REGION }} --format='value(status.url)')"
-          echo "✅ Front:  $(gcloud run services describe ${{ env.FRONT_SERVICE }} --region=${{ env.GCP_REGION }} --format='value(status.url)')"
+          API_URL=$(gcloud run services describe ${{ env.API_SERVICE }} --region=${{ env.GCP_REGION }} --format='value(status.url)')
+          WEB_URL=$(gcloud run services describe ${{ env.WEB_SERVICE }} --region=${{ env.GCP_REGION }} --format='value(status.url)')
+          echo "✅ LGP CRM API:  $API_URL"
+          echo "✅ LGP CRM Web:  $WEB_URL"
+          echo "api_url=$API_URL" >> $GITHUB_OUTPUT
+          echo "web_url=$WEB_URL" >> $GITHUB_OUTPUT
