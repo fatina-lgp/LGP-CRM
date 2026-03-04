@@ -53,6 +53,7 @@ jobs:
         run: |
           docker build --no-cache \
             -f Dockerfile.web \
+            --build-arg VITE_API_URL=https://lgp-crm-api-jqi3kmucmq-ue.a.run.app \
             -t ${{ env.AR_REPO }}/lgp-crm-web:latest \
             -t ${{ env.AR_REPO }}/lgp-crm-web:${{ github.sha }} \
             apps/web
