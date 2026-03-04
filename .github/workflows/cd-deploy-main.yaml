@@ -75,7 +75,7 @@ jobs:
             --timeout=300 \
             --service-account=${{ secrets.GCP_SERVICE_ACCOUNT }} \
             --add-cloudsql-instances=${{ secrets.CLOUD_SQL_INSTANCE }} \
-            --set-env-vars="NODE_ENV=production,FRONTEND_URL=*" \
+            --set-env-vars="NODE_ENV=production,FRONTEND_URL=*,BUILD_SHA=${{ github.sha }}" \
             --set-secrets="DATABASE_URL=PG_DATABASE_URL:latest,JWT_SECRET=APP_SECRET:latest"
 
       # ── 8. Deploy Web ────────────────────────────────────────────────────────
