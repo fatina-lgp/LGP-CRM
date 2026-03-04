@@ -37,23 +37,16 @@ jobs:
       - name: Configure Docker
         run: gcloud auth configure-docker us-east1-docker.pkg.dev --quiet
 
-      # ── 4. Docker Buildx ─────────────────────────────────────────────────────
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      # ── 5. Build & Push API ──────────────────────────────────────────────────
+      # ── 4. Build & Push API (direct docker — no buildx cache issues) ─────────
       - name: Build & Push lgp-crm-api
-        uses: docker/build-push-action@v5
-        with:
-          context: apps/api
-          file: Dockerfile.api
-          push: true
-          tags: |
-            ${{ env.AR_REPO }}/lgp-crm-api:latest
-            ${{ env.AR_REPO }}/lgp-crm-api:${{ github.sha }}
-          build-args: |
-            CACHEBUST=${{ github.sha }}
-          no-cache: true
+        run: |
+          docker build --no-cache \
+            -f Dockerfile.api \
+            -t ${{ env.AR_REPO }}/lgp-crm-api:latest \
+            -t ${{ env.AR_REPO }}/lgp-crm-api:${{ github.sha }} \
+            apps/api
+          docker push ${{ env.AR_REPO }}/lgp-crm-api:latest
+          docker push ${{ env.AR_REPO }}/lgp-crm-api:${{ github.sha }}
 
       # ── 6. Build & Push Web ──────────────────────────────────────────────────
       - name: Build & Push lgp-crm-web
