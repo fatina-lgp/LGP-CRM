@@ -48,18 +48,16 @@ jobs:
           docker push ${{ env.AR_REPO }}/lgp-crm-api:latest
           docker push ${{ env.AR_REPO }}/lgp-crm-api:${{ github.sha }}
 
-      # ── 6. Build & Push Web ──────────────────────────────────────────────────
+      # ── 5. Build & Push Web ──────────────────────────────────────────────────
       - name: Build & Push lgp-crm-web
-        uses: docker/build-push-action@v5
-        with:
-          context: apps/web
-          file: Dockerfile.web
-          push: true
-          tags: |
-            ${{ env.AR_REPO }}/lgp-crm-web:latest
-            ${{ env.AR_REPO }}/lgp-crm-web:${{ github.sha }}
-          cache-from: type=registry,ref=${{ env.AR_REPO }}/lgp-crm-web:cache
-          cache-to: type=registry,ref=${{ env.AR_REPO }}/lgp-crm-web:cache,mode=max
+        run: |
+          docker build --no-cache \
+            -f Dockerfile.web \
+            -t ${{ env.AR_REPO }}/lgp-crm-web:latest \
+            -t ${{ env.AR_REPO }}/lgp-crm-web:${{ github.sha }} \
+            apps/web
+          docker push ${{ env.AR_REPO }}/lgp-crm-web:latest
+          docker push ${{ env.AR_REPO }}/lgp-crm-web:${{ github.sha }}
 
       # ── 7. Deploy API ──────────────────────────────────────────────────────────
       - name: Deploy lgp-crm-api
