@@ -51,6 +51,8 @@ jobs:
           tags: |
             ${{ env.AR_REPO }}/lgp-crm-api:latest
             ${{ env.AR_REPO }}/lgp-crm-api:${{ github.sha }}
+          build-args: |
+            CACHEBUST=${{ github.sha }}
           no-cache: true
 
       # ── 6. Build & Push Web ──────────────────────────────────────────────────
